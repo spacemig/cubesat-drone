@@ -3,6 +3,8 @@ global J m T grv
 grv = [0;0;9.81];
 m = 4; % mass of the drone
 J = diag([0.006666666667, 0.03333333333, 0.03333333333]); % inertia matrix of the drone
+
+% thurster positions in body frame
 RR = [10	0	5
     -10	0	5
     10	5	0
@@ -13,6 +15,8 @@ RR = [10	0	5
     -10	-5	0
     15	0	0
     -15	0	0]'*1e-2; %each row is the position of a propeller
+
+%thurster directions in the body frame
 U = [0	0	1
     0	0	1
     0	1	0
@@ -23,15 +27,18 @@ U = [0	0	1
     0	-1	0
     1	0	0
     -1	0	0]'; % each row is the direction of the thrust
-direction = [1 1 1 1 1 1 1 1 1 -1];
-kf = 1; %rho*D^4*CT
-km = 1; %rho*D^5*CM
-T = [];
+direction = [1 1 1 1 1 1 1 1 1 -1]; % directio of the moments
+kf = 1; %rho*D^4*CT, thrust coeff
+km = 1; %rho*D^5*CM, torque coeff
+T = []; % thurst to force and torque transformation
+
+% compute the force and torque produced by each thurster 
 for I = 1:width(RR)
     aux = [kf*U(:,I); 
            kf*skew(RR(:,I))*U(:,I)-km*U(:,I)*direction(I)];
     T = [T aux];
 end 
+
 %simulation parameters
 TSPAN = [0 100];
 JSPAN = [0 10];
@@ -132,7 +139,7 @@ function [dxi,rpm] = F(xi)
     %control commands
     Fctrl = -m*grv-v -p; % simple PD control
     Mctrl = -inverse_skew(R-R')-w;
-    % individual motors rpm
+    % individual motors rpm >> TODO: replace rpm with thurst
     rpm = T \ [Fctrl;Mctrl]; % solve for motor RPMs
     % rpm to forces and moments
     aux = T * rpm; % forces and moments from RPMs
