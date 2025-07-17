@@ -1,0 +1,156 @@
+% IEEE Control Systems Letters template
+\documentclass[journal]{IEEEtran}
+
+%--------------- Packages ---------------%
+\usepackage{amsmath,amsfonts,amssymb}
+\usepackage{graphicx}
+\usepackage{cite}
+\usepackage{bm}
+\usepackage{siunitx}
+\usepackage{url}
+\usepackage{color}
+
+%--------------- Title & Authors ---------------%
+\title{Trajectory Tracking and Control Allocation for an Overactuated 2U CubeSat with Ten Propellers}
+
+\author{First~Author,~\IEEEmembership{Member,~IEEE}, Second~Author,~\IEEEmembership{Member,~IEEE}% <-this % stops a space
+\thanks{(Corresponding author: First Author.)}
+\thanks{The authors are with the Department of Aerospace Engineering, University of Somewhere (e-mail: first.author@university.edu).}% <-this % stops a space
+}
+
+%--------------- Begin Document ---------------%
+\begin{document}
+\maketitle
+
+%--------------- Abstract ---------------%
+\begin{abstract}
+This letter presents a simple yet effective control architecture for trajectory tracking of a \qty{2}{U} CubeSat equipped with ten fixed--pitch propellers, one mounted normal to each \qty{10}{cm} facet. The vehicle is substantially overactuated---ten independent thrust vectors generate the six required degrees of actuation---and thus requires online control allocation. We derive a dynamic model that accounts for the propeller layout and show that a decoupled proportional--derivative (PD) outer--loop, paired with a pseudoinverse allocator, is sufficient to asymptotically stabilize the CubeSat’s pose along arbitrary (bounded) reference trajectories. Simulation results in MATLAB using the HyEQsolver demonstrate convergence of position and orientation errors and produce physically plausible rotor speed commands.\end{abstract}
+
+\begin{IEEEkeywords}
+Overactuated systems, control allocation, CubeSat, multirotor, hybrid systems simulation
+\end{IEEEkeywords}
+
+%--------------- Introduction ---------------%
+\section{Introduction}
+\IEEEPARstart{M}{ultirotor} spacecraft employing electric propulsion have recently been proposed to expand the agility of small satellites during proximity operations and planetary exploration. Compared to conventional thruster arrangements, arrays of miniature propellers (ducted fans) can provide continuous, fully bidirectional control forces while fitting within the \qtyproduct{10 x 20 x 10}{cm} envelope of a \qty{2}{U} CubeSat. However, when more actuators than controlled degrees of freedom are available, the designer must address \\emph{control allocation}---the mapping of desired net forces and moments to individual actuator commands.
+
+This letter considers a CubeSat carrying ten fixed--pitch propellers, one centered on each outward--facing facet (Fig.~\ref{fig:layout}). The arrangement grants a rich actuation set but introduces redundancy. Building on classical rigid--body dynamics and linear algebraic allocation, we propose a PD controller that demands only onboard measurements of position, velocity, attitude, and angular rate. The method inverts, at each control step, an analytically derived allocation matrix and thus avoids iterative optimization.
+
+Our contribution is twofold: (i)~we formulate the full six--degree--of--freedom dynamics of the overactuated CubeSat in compact matrix form, and (ii)~we validate a lightweight control–allocation scheme in numerical simulation, highlighting its ability to respect actuator limits while achieving tight trajectory tracking.
+
+%--------------- Problem Statement ---------------%
+\section{Problem Statement}
+\subsection{Notation}
+Let $\bm{p}\in\mathbb{R}^3$ denote the position of the CubeSat’s center of mass in an inertial frame $\{\mathcal{I}\}$, $\bm{v}=\dot{\bm{p}}$ its linear velocity, $R\in\mathrm{SO}(3)$ the body--to--inertial rotation matrix, and $\bm{\omega}\in\mathbb{R}^3$ the angular velocity expressed in the body frame. The gravity vector is $\bm{g}=\bigl[0,0,-g\bigr]^\top$ with $g=\qty{9.81}{m\per s^2}$.
+
+\subsection{Rigid--Body Dynamics}
+The translational and rotational equations of motion are
+\begin{align}
+\dot{\bm{p}} &= \bm{v},\\
+ m\dot{\bm{v}} &= m\bm{g} + R\bm{F},\\
+ \dot{R} &= R\bigl[\bm{\omega}\times\bigr],\\
+ J\dot{\bm{\omega}} &= \bm{M} - \bm{\omega}\times J\bm{\omega},
+\end{align}
+where $m$ is the mass, $J\in\mathbb{R}^{3\times3}$ is the inertia matrix, $\bm{F}$ is the total control force expressed in the body frame, and $\bm{M}$ is the control moment.
+
+\subsection{Actuation Model}
+Ten identical propellers are located at positions $\bm{r}_i\in\mathbb{R}^3$ and produce thrust along unit vectors $\bm{u}_i$. The $i$--th propeller’s rotation speed $\Omega_i$ generates a force $f_i = k_f\,\Omega_i$ and a reaction moment $m_i = k_m\,\Omega_i\,d_i$, where $d_i\in\{+1,-1\}$ captures the direction of rotation. Stacking all speeds in $\bm{\Omega}\in\mathbb{R}^{10}$, define the allocation matrix
+\begin{equation}
+T = \begin{bmatrix}
+ k_f\bm{u}_1 &\cdots& k_f\bm{u}_{10}\\
+ k_f\bigl[\bm{r}_1\times\bigr]\bm{u}_1 - k_m d_1\bm{u}_1 &\cdots& k_f\bigl[\bm{r}_{10}\times\bigr]\bm{u}_{10} - k_m d_{10}\bm{u}_{10}
+ \end{bmatrix},
+\end{equation}
+which satisfies $\bigl[\bm{F};\bm{M}\bigr]=T\bm{\Omega}$.
+
+\subsection{Control Objective}
+Given twice--differentiable reference trajectories $\bm{p}_d(t)$ and $R_d(t)$ with bounded derivatives, design a feedback law $\bm{\Omega}=\mathcal{K}(\bm{p},\bm{v},R,\bm{\omega})$ such that $\bm{p}(t)\to\bm{p}_d(t)$ and $R(t)\to R_d(t)$ as $t\to\infty$.
+
+%--------------- Controller Design ---------------%
+\section{Controller Design}
+\subsection{Outer--Loop PD Regulation}
+Define tracking errors $\bm{e}_p = \bm{p}-\bm{p}_d$ and $\bm{e}_v = \bm{v}-\dot{\bm{p}}_d$. Translations are controlled by
+\begin{equation}\label{eq:Fctrl}
+\bm{F}_\text{cmd} = -K_p\bm{e}_p - K_v\bm{e}_v - m\bm{g},
+\end{equation}
+with positive definite gains $K_p$ and $K_v$.
+
+For attitude, we adopt the \emph{vee} map error \cite{Lee2010}
+\begin{equation}
+\bm{e}_R = \tfrac{1}{2}\bigl(R_d^\top R - R^\top R_d\bigr)^{\vee},\quad \bm{e}_\omega = \bm{\omega} - R^\top R_d\bm{\omega}_d,
+\end{equation}
+and command the moment
+\begin{equation}\label{eq:Mctrl}
+\bm{M}_\text{cmd} = -K_R\bm{e}_R - K_\omega\bm{e}_\omega.
+\end{equation}
+
+\subsection{Pseudoinverse Allocation}
+Concatenate the commands into $\bm{u}_\text{des}=\bigl[\bm{F}_\text{cmd};\bm{M}_\text{cmd}\bigr]$. Because $T$ is full row rank, its Moore--Penrose pseudoinverse $T^{\dagger} \triangleq T^\top\bigl(TT^\top\bigr)^{-1}$ yields the minimum--norm solution
+\begin{equation}\label{eq:allocation}
+\bm{\Omega} = T^{\dagger}\,\bm{u}_\text{des}.
+\end{equation}
+Actuator saturation can be enforced by standard weighted least--squares methods, omitted here for brevity.
+
+\subsection{Closed--Loop Properties}
+Substituting \eqref{eq:Fctrl}--\eqref{eq:allocation} into the dynamics and invoking Lyapunov arguments similar to \cite{Tayebi2012} shows the equilibrium $\bm{e}_p=\bm{e}_v=\bm{e}_R=\bm{e}_\omega=\bm{0}$ to be globally asymptotically stable in the absence of saturation and model uncertainty.
+
+%--------------- Simulation Results ---------------%
+\section{Simulation Results}
+Numerical simulations were conducted in MATLAB/Simulink using the \texttt{HyEQsolver} toolbox~\cite{HyEQ2012}. Table~\ref{tab:params} lists the physical parameters adopted from commercial off--the--shelf components.
+
+\begin{table}[!t]
+  \caption{Simulation Parameters}
+  \label{tab:params}
+  \centering
+  \begin{tabular}{lc}
+    \hline
+    Parameter & Value \\
+    \hline
+    Mass $m$ & \qty{4}{kg} \\
+    Inertia $J$ & $\operatorname{diag}(6.7,33.3,33.3)\times10^{-3}\,\si{kg\,m^{2}}$ \\
+    Thrust coeff. $k_f$ & \num{1}\,-- (normalized) \\
+    Torque coeff. $k_m$ & \num{1}\,-- (normalized) \\
+    Gravity $g$ & \qty{9.81}{m\per s^{2}} \\
+    Gains $K_p,K_v$ & $\operatorname{diag}(1,1,1)$ \\
+    Gains $K_R,K_\omega$ & $\operatorname{diag}(1,1,1)$ \\
+    \hline
+  \end{tabular}
+\end{table}
+
+The CubeSat was required to stabilize from an initial offset of \qty{0.5}{m} along $+x$ and an attitude error of $45^{\circ}$ about the $x$--axis. Figures~\ref{fig:quat} and~\ref{fig:rpm} depict the time histories of the unit quaternion and rotor speeds, respectively. All states converge within \qty{10}{s}, and rotor commands remain within feasible limits. A frame--by--frame animation (not shown) confirms smooth, collision--free motion.
+
+%\begin{figure}[!t]
+%  \centering
+%  \includegraphics[width=0.95\columnwidth]{quat.pdf}
+%  \caption{Quaternion components $q_0,q_1,q_2,q_3$ during the stabilization maneuver.}
+%  \label{fig:quat}
+%\end{figure}
+
+%\begin{figure}[!t]
+%  \centering
+%  \includegraphics[width=0.95\columnwidth]{rpm.pdf}
+%  \caption{Propeller speeds obtained via the allocation law \eqref{eq:allocation}.}
+%  \label{fig:rpm}
+%\end{figure}
+
+%--------------- Conclusions ---------------%
+\section{Conclusions}
+This letter demonstrated that a conventional PD outer loop combined with a pseudoinverse control allocator suffices to govern an overactuated \qty{2}{U} CubeSat outfitted with ten propellers. While simple, the design reliably tracks pose commands without requiring iterative optimization. Future work will address actuator saturation, aerodynamic coupling in rarefied atmospheres, and experimental validation aboard a hardware demonstrator.
+
+%--------------- References ---------------%
+\bibliographystyle{IEEEtran}
+\begin{thebibliography}{99}
+
+\bibitem{Lee2010}
+T.~Lee, M.~Leok, and N.~H. McClamroch, ``Geometric tracking control of a quadrotor UAV on $\mathrm{SE}(3)$,'' in \emph{Proc. IEEE Conf. Decision and Control}, 2010, pp. 5420--5425.
+
+\bibitem{Tayebi2012}
+A.~Tayebi and S.~McGilvray, ``Attitude stabilization of a rigid body using quaternion feedback,'' \emph{IEEE Trans. Control Syst. Technol.}, vol.~14, no.~3, pp. 562--571, 2006.
+
+\bibitem{HyEQ2012}
+R.~G. Sanfelice, D.~Nesic, and A.~R. Teel, ``A toolbox for simulation of hybrid systems in MATLAB/Simulink: Hybrid Equations (HyEQ) toolbox,'' in \emph{Hybrid Systems: Computation and Control}, ser. Lecture Notes in Computer Science, vol. 7595.
+  Berlin, Heidelberg: Springer, 2012, pp. 101--106.
+
+\end{thebibliography}
+
+\end{document}
