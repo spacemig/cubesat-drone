@@ -40,7 +40,8 @@ p0 = [0; 0; 0]; % initial position
 v0 = [0; 0; 0]; % initial velocity
 R0 = angle2dcm(pi/4,0,0); % initial orientation
 w0 = [0; 0; 0]; % initial angular velocity
-xi0 = [p0; v0; reshape(R0, 9, 1); w0]; % initial state vector
+t0 = 0;
+xi0 = [p0; v0; reshape(R0, 9, 1); w0;t0]; % initial state vector
 
 [t,j,xi] = HyEQsolver(@F,@G,@C,@D,xi0, TSPAN, JSPAN,rule);
 
@@ -123,15 +124,32 @@ for i = 1:10:length(t)
 end
 hold off;
 
+function [pd,vd,ad,Rd,wd,dwd] = trajectory(t)
+    % Define a simple trajectory for the drone
+    pd = [0; 0; 0]; % position
+    vd = [0; 0; 0]; % velocity
+    ad = [0; 0; 0]; % acceleration
+    wd = [1; 0; 0]; % angular velocity
+    Rd = expm(skew(wd)*t); % orientation (identity matrix)
+    dwd = [0; 0; 0]; % angular acceleration
+end
+
 function [dxi,rpm] = F(xi)
     global J m T grv
     p = xi(1:3);
     v = xi(4:6);
     R = reshape(xi(7:15), 3, 3);
     w = xi(16:18);
+    t = xi(19); % time
+    % tracking errors
+    [pd,vd,ad,Rd,wd,dwd] = trajectory(t);
+    ep = p - pd; % position error
+    ev = v - vd; % velocity error
+    eR = Rd' * R; % orientation error (R * Rd' gives the relative rotation)
+    ew = w - wd; % angular velocity error
     %control commands
-    Fctrl = -m*grv-v -p; % simple PD control
-    Mctrl = -inverse_skew(R-R')-w;
+    Fctrl = ad-m*grv-ev -ep; % simple PD control
+    Mctrl = J*eR*dwd+J*eR*skew(ew)*wd-inverse_skew(eR-eR')-ew + skew(w) * J * w; 
     % individual motors rpm
     rpm = T \ [Fctrl;Mctrl]; % solve for motor RPMs
     % rpm to forces and moments
@@ -143,7 +161,7 @@ function [dxi,rpm] = F(xi)
     dv = grv+F/m;
     dR = R * skew(w);
     dw = J \ (M - skew(w) * J * w);
-    dxi = [dp; dv; reshape(dR, 9, 1); dw];
+    dxi = [dp; dv; reshape(dR, 9, 1); dw; 1];
 end
 
 function out = G(xi)
