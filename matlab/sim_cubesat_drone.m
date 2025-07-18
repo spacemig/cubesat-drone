@@ -153,10 +153,10 @@ function [dxi,rpm] = F(xi)
     ep = p - pd; % position error
     ev = v - vd; % velocity error
     eR = Rd' * R; % orientation error (R * Rd' gives the relative rotation)
-    ew = w - wd; % angular velocity error
+    ew = w - eR'*wd; % angular velocity error
     %control commands
     Fctrl = ad-m*grv-ev -ep; % simple PD control
-    Mctrl = J*eR*dwd+J*eR*skew(ew)*wd-inverse_skew(eR-eR')-ew + skew(w) * J * w; 
+    Mctrl = J*eR'*dwd+skew(eR'*wd)*J*eR'*wd-inverse_skew(eR-eR')-ew; 
     % individual motors rpm >> TODO: replace rpm with thurst
     rpm = T \ [Fctrl;Mctrl]; % solve for motor RPMs
     % rpm to forces and moments
