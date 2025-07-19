@@ -1,7 +1,7 @@
 global J m T grv
 %system parameters
-grv = [0;0;9.81];
-m = 4; % mass of the drone
+grv = [0;0;-9.81];
+m = 2; % mass of the drone
 J = diag([0.006666666667, 0.03333333333, 0.03333333333]); % inertia matrix of the drone
 
 % thurster positions in body frame
@@ -27,9 +27,13 @@ U = [0	0	1
     0	-1	0
     1	0	0
     -1	0	0]'; % each row is the direction of the thrust
-direction = [1 1 1 1 1 1 1 1 1 -1]; % directio of the moments
-kf = 1; %rho*D^4*CT, thrust coeff
-km = 1; %rho*D^5*CM, torque coeff
+direction = [1 -1 1 -1 1 -1 1 -1 1 -1]; % directio of the moments
+CT = 0.2945;
+CP = 0.2688;
+rho = 1.225;
+d = 0.1016;
+kf = rho*d^4*CT/60^2; % thrust coeff
+km = rho*d^5*CP/60^2; %rho*D^5*CM, torque coeff
 T = []; % thurst to force and torque transformation
 
 % compute the force and torque produced by each thurster 
@@ -40,19 +44,19 @@ for I = 1:width(RR)
 end 
 
 %simulation parameters
-TSPAN = [0 100];
+TSPAN = [0 5];
 JSPAN = [0 10];
 rule = 1; %priority for jumps
 p0 = [0; 0; 0]; % initial position
 v0 = [0; 0; 0]; % initial velocity
-R0 = angle2dcm(pi/4,0,0); % initial orientation
+R0 = angle2dcm(0,0,0); % initial orientation
 w0 = [0; 0; 0]; % initial angular velocity
 t0 = 0;
 xi0 = [p0; v0; reshape(R0, 9, 1); w0;t0]; % initial state vector
 
 [t,j,xi] = HyEQsolver(@F,@G,@C,@D,xi0, TSPAN, JSPAN,rule);
 
-% Extract unit-quaternions from R and plot them
+%% Extract unit-quaternions from R and plot them
 quaternions = zeros(length(t), 4);
 for i = 1:length(t)
     R = reshape(xi(i, 7:15), 3, 3);
@@ -136,9 +140,14 @@ function [pd,vd,ad,Rd,wd,dwd] = trajectory(t)
     pd = [0; 0; 0]; % position
     vd = [0; 0; 0]; % velocity
     ad = [0; 0; 0]; % acceleration
+    %{
     wd = [1; 0; 0]; % angular velocity
     Rd = expm(skew(wd)*t); % orientation (identity matrix)
     dwd = [0; 0; 0]; % angular acceleration
+    %}
+    wd = [0; 0; 0];
+    Rd = angle2dcm(0,pi/2,0,"XYZ");
+    dwd = zeros(3,1);
 end
 
 function [dxi,rpm] = F(xi)
@@ -158,10 +167,11 @@ function [dxi,rpm] = F(xi)
     Fctrl = ad-m*grv-ev -ep; % simple PD control
     Mctrl = J*eR'*dwd+skew(eR'*wd)*J*eR'*wd-inverse_skew(eR-eR')-ew; 
     % individual motors rpm >> TODO: replace rpm with thurst
-    rpm = T \ [Fctrl;Mctrl]; % solve for motor RPMs
+    rpm2 = T'*(T*T')^(-1)* [R'*Fctrl;Mctrl]; % solve for motor RPMs
+    rpm = sign(rpm2).*sqrt(abs(rpm2));
     % rpm to forces and moments
-    aux = T * rpm; % forces and moments from RPMs
-    F = aux(1:3); % forces
+    aux = T * rpm2; % forces and moments from RPMs
+    F = R*aux(1:3); % forces
     M = aux(4:6); % moments
     %dynamics
     dp = v;
