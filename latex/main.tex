@@ -2,20 +2,30 @@
 \documentclass[journal]{IEEEtran}
 
 %--------------- Packages ---------------%
-\usepackage{amsmath,amsfonts,amssymb}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath,amsfonts,amssymb,amsthm}
 \usepackage{graphicx}
 \usepackage{cite}
 \usepackage{bm}
 \usepackage{siunitx}
 \usepackage{url}
 \usepackage{color}
+\usepackage{mathtools}
+
+\newtheorem*{problem}{Problem Statement}
+
+%--------------- Macros ---------------%
+\newcommand{\norm}[1]{\left| #1 \right|}
+\newcommand{\tp}{^\top}
+\newcommand{\ball}{\mathbb{B}}
+\newcommand{\eye}[1]{I_{#1}}
+\DeclareMathOperator{\trace}{trace}
 
 %--------------- Title & Authors ---------------%
-\title{Trajectory Tracking and Control Allocation for an Overactuated 2U CubeSat with Ten Propellers}
+\title{Trajectory Tracking and Control Allocation for an Overactuated 3U CubeSat with Ten Propellers}
 
-\author{First~Author,~\IEEEmembership{Member,~IEEE}, Second~Author,~\IEEEmembership{Member,~IEEE}% <-this % stops a space
-\thanks{(Corresponding author: First Author.)}
-\thanks{The authors are with the Department of Aerospace Engineering, University of Somewhere (e-mail: first.author@university.edu).}% <-this % stops a space
+\author{Miguel~A.~Nunes, Pedro~Casau,~\IEEEmembership{Member,~IEEE}% <-this % stops a space
+\thanks{Miguel A. Nunes is with the Hawai‘i Space Flight Laboratory at University of Hawai‘i, Honolulu, USA. P. Casau is with the Department of Electronics, Telecommunications and Informatics at University of Aveiro, and with Instituto de Telecomunicações at Aveiro, Portugal. Corresponding author: Miguel A. Nunes (e-mail: \texttt{miguel.nunes@hsfl.hawaii.edu}).}% <-this % stops a space
 }
 
 %--------------- Begin Document ---------------%
@@ -24,7 +34,12 @@
 
 %--------------- Abstract ---------------%
 \begin{abstract}
-This letter presents a simple yet effective control architecture for trajectory tracking of a \qty{2}{U} CubeSat equipped with ten fixed--pitch propellers, one mounted normal to each \qty{10}{cm} facet. The vehicle is substantially overactuated---ten independent thrust vectors generate the six required degrees of actuation---and thus requires online control allocation. We derive a dynamic model that accounts for the propeller layout and show that a decoupled proportional--derivative (PD) outer--loop, paired with a pseudoinverse allocator, is sufficient to asymptotically stabilize the CubeSat’s pose along arbitrary (bounded) reference trajectories. Simulation results in MATLAB using the HyEQsolver demonstrate convergence of position and orientation errors and produce physically plausible rotor speed commands.\end{abstract}
+This paper presents a hybrid control architecture for global trajectory tracking of an aerial vehicle with the form factor of a \qty{3}{U} CubeSat. 
+The vehicle is equipped with ten bidirectional propellers mounted on facets of its frame. 
+We derive a dynamical model that accounts for the propeller layout and design a proportional-derivative (PD) feedback law combined with a hybrid supervisor to globally asymptotically stabilize the vehicle's pose along arbitrary (bounded) reference trajectories. 
+To solve the control allocation problem, we implement a minimum control effort algorithm.
+Simulation results demonstrate convergence of position and orientation errors and produce physically plausible rotor speed commands.
+\end{abstract}
 
 \begin{IEEEkeywords}
 Overactuated systems, control allocation, CubeSat, multirotor, hybrid systems simulation
@@ -36,44 +51,138 @@ Overactuated systems, control allocation, CubeSat, multirotor, hybrid systems si
 
 This letter considers a CubeSat carrying ten fixed--pitch propellers, one centered on each outward--facing facet (Fig.~\ref{fig:layout}). The arrangement grants a rich actuation set but introduces redundancy. Building on classical rigid--body dynamics and linear algebraic allocation, we propose a PD controller that demands only onboard measurements of position, velocity, attitude, and angular rate. The method inverts, at each control step, an analytically derived allocation matrix and thus avoids iterative optimization.
 
-Our contribution is twofold: (i)~we formulate the full six--degree--of--freedom dynamics of the overactuated CubeSat in compact matrix form, and (ii)~we validate a lightweight control–allocation scheme in numerical simulation, highlighting its ability to respect actuator limits while achieving tight trajectory tracking.
+Our contribution is twofold: (i)~we formulate the full six--degree--of--freedom dynamics of the overactuated CubeSat in compact matrix form, and (ii)~we validate a lightweight control-allocation scheme in numerical simulation, highlighting its ability to respect actuator limits while achieving tight trajectory tracking.
 
 %--------------- Problem Statement ---------------%
 \section{Problem Statement}
 \subsection{Notation}
-Let $\bm{p}\in\mathbb{R}^3$ denote the position of the CubeSat’s center of mass in an inertial frame $\{\mathcal{I}\}$, $\bm{v}=\dot{\bm{p}}$ its linear velocity, $R\in\mathrm{SO}(3)$ the body--to--inertial rotation matrix, and $\bm{\omega}\in\mathbb{R}^3$ the angular velocity expressed in the body frame. The gravity vector is $\bm{g}=\bigl[0,0,-g\bigr]^\top$ with $g=\qty{9.81}{m\per s^2}$.
+The 3-dimensional ball of radius $L\geq 0$ is represented by $L\ball = \{\bm{x}\in\mathbb{R}^3:\norm{\bm{x}}\leq L\}$. The special orthogonal group is $\mathrm{SO}(3) = \{R\in\mathbb{R}^{3\times3}:RR\tp=\eye{3}, \det(R)=1\}$. The identity matrix is $\eye{n}\in\mathbb{R}^{n\times n}$. 
+The function 
+\begin{equation}\label{eq:S}
+S(\omega)\coloneqq\begin{bmatrix}
+0 & -\omega_3 & \omega_2\\
+\omega_3 & 0 & -\omega_1\\
+-\omega_2 & \omega_1 & 0
+\end{bmatrix}
+\end{equation}
+maps $\bm{\omega}\coloneqq(\omega_1,\omega_2,\omega_3)\in\mathbb{R}^3$ to a skew-symmetric matrix such that $S(\bm{\omega})\bm{x} = \bm{\omega}\times\bm{x}$ for any $\bm{x}\in\mathbb{R}^3$.
 
-\subsection{Rigid--Body Dynamics}
+\subsection{Rigid-Body Dynamics}
+Let $\bm{p}\in\mathbb{R}^3$ denote the position of the vehicle's center of mass in an inertial frame $\{\mathcal{I}\}$, $\bm{v}=\dot{\bm{p}}$ its linear velocity, $R\in\mathrm{SO}(3)$ the body-to-inertial rotation matrix, and $\bm{\omega}\in\mathbb{R}^3$ the angular velocity expressed in the body frame.
 The translational and rotational equations of motion are
-\begin{align}
+\begin{equation}\label{eq:dynamics}
+\begin{aligned}
 \dot{\bm{p}} &= \bm{v},\\
  m\dot{\bm{v}} &= m\bm{g} + R\bm{F},\\
- \dot{R} &= R\bigl[\bm{\omega}\times\bigr],\\
+ \dot{R} &= RS(\bm{\omega}),\\
  J\dot{\bm{\omega}} &= \bm{M} - \bm{\omega}\times J\bm{\omega},
-\end{align}
-where $m$ is the mass, $J\in\mathbb{R}^{3\times3}$ is the inertia matrix, $\bm{F}$ is the total control force expressed in the body frame, and $\bm{M}$ is the control moment.
+\end{aligned}
+\end{equation}
+where $m$ is the mass, $\bm{g}$ is the gravity vector, $J\in\mathbb{R}^{3\times3}$ is the tensor of inertia, $\bm{F}\in\mathbb{R}^3$ is the net force expressed in the body frame, and $\bm{M}\in\mathbb{R}^3$ is the net moment (see e.g.~\cite{bullo_geometric_2005}).
 
 \subsection{Actuation Model}
-Ten identical propellers are located at positions $\bm{r}_i\in\mathbb{R}^3$ and produce thrust along unit vectors $\bm{u}_i$. The $i$--th propeller’s rotation speed $\Omega_i$ generates a force $f_i = k_f\,\Omega_i$ and a reaction moment $m_i = k_m\,\Omega_i\,d_i$, where $d_i\in\{+1,-1\}$ captures the direction of rotation. Stacking all speeds in $\bm{\Omega}\in\mathbb{R}^{10}$, define the allocation matrix
-\begin{equation}
-T = \begin{bmatrix}
- k_f\bm{u}_1 &\cdots& k_f\bm{u}_{10}\\
- k_f\bigl[\bm{r}_1\times\bigr]\bm{u}_1 - k_m d_1\bm{u}_1 &\cdots& k_f\bigl[\bm{r}_{10}\times\bigr]\bm{u}_{10} - k_m d_{10}\bm{u}_{10}
- \end{bmatrix},
+Ten identical propellers are located at positions $\bm{r}_i\in\mathbb{R}^3$ and produce thrust along unit vectors $\bm{u}_i$. The $i$-th propeller's rotation speed $\Omega_i\in\mathbb{R}$ generates a force
+$$f_i = \rho\, d^4\, C_T\,\norm{\Omega_i}\Omega_i$$ 
+where $\rho$ is atmospheric density, $d$ is the propeller's diameter, and $C_T$ is the coefficient of thrust. 
+Each propeller also induces a moment about its axis of rotation
+$$m_i = \rho d^5 C_Q\, d_i\,\norm{\Omega_i}\Omega_i,$$
+where $C_Q$ is the coefficient of torque, and $d_i\in\{+1,-1\}$ captures the direction of rotation (cf.~\cite{VonMises1959}).
+
+The net force and moment acting on the vehicle are
+\begin{equation}\label{eq:FM}
+\begin{aligned}
+\bm{F} &= \sum_{i=1}^{10} f_i\bm{u}_i = k_f\sum_{i=1}^{10}\norm{\Omega_i}\Omega_i\bm{u}_i,\\
+\bm{M} &= \sum_{i=1}^{10}\bigl(\bm{r}_i\times f_i\bm{u}_i + m_i\bm{u}_i\bigr) \\
+&= \sum_{i=1}^{10}\bigl(k_fS(\bm{r}_i) + k_m d_i\bigr)\bm{u}_i\norm{\Omega_i}\Omega_i,
+\end{aligned}
 \end{equation}
-which satisfies $\bigl[\bm{F};\bm{M}\bigr]=T\bm{\Omega}$.
+where $k_f = \rho d^4 C_T$ and $k_m = \rho d^5 C_Q$. Defining $\bm{\Omega}\coloneqq(\norm{\Omega_1}\Omega_1,\ldots,\norm{\Omega_{10}}\Omega_{10})\in\mathbb{R}^{10}$ as the vector of squared propeller speeds, we can rewrite~\eqref{eq:FM} as $\begin{bmatrix} \bm{F}\tp & \bm{M}\tp \end{bmatrix}\tp = T\bm{\Omega}$ with 
+\begin{equation*}
+T = \begin{bmatrix}
+ k_f\bm{u}_1 &\ldots& k_f\bm{u}_{10}\\
+ \left(k_fS(\bm{r}_1) - k_m d_1\right)\bm{u}_1 &\ldots& \left(k_fS(\bm{r}_{10}) - k_m d_{10}\right)\bm{u}_{10}
+ \end{bmatrix}.
+\end{equation*}
 
 \subsection{Control Objective}
-Given twice--differentiable reference trajectories $\bm{p}_d(t)$ and $R_d(t)$ with bounded derivatives, design a feedback law $\bm{\Omega}=\mathcal{K}(\bm{p},\bm{v},R,\bm{\omega})$ such that $\bm{p}(t)\to\bm{p}_d(t)$ and $R(t)\to R_d(t)$ as $t\to\infty$.
+Given $L_v,L_\omega>0$ and a twice-differentiable reference trajectory $t\mapsto(\bm{p}_d(t),R_d(t))\in\mathbb{R}^3\times SO(3)$ with bounded derivatives satisfying
+\begin{equation}\label{eq:ref}
+\begin{aligned}
+  \dot{\bm{p}}_d(t) &= \bm{v}_d(t),\\
+  \dot{v}_d(t) &\in L_v\ball\\
+  \dot{R}_d(t) &= R_d(t)S(\bm{\omega}_d(t)),\\
+  \dot{\bm{\omega}}_d(t) &\in L_\omega\ball
+\end{aligned}
+\end{equation}
+for each $t\geq 0$, we define the tracking errors as follows:
+\begin{equation}\label{eq:errors}
+\begin{aligned}
+\bm{p}_e(t)&\coloneqq\bm{p}(t)-\bm{p}_d(t),\\
+\bm{v}_e(t)&\coloneqq\bm{v}(t)-\dot{\bm{p}}_d(t),\\
+R_e(t)&\coloneqq R_d(t)^\top R(t)\\
+\bm{\omega}_e(t) &\coloneqq \bm{\omega}(t)-R_e(t)\tp\bm{\omega}_d(t)
+\end{aligned}
+\end{equation}
+for each $t\geq 0$. 
+Differentiating~\eqref{eq:errors} with respect to time and using~\eqref{eq:dynamics} and~\eqref{eq:ref}, we obtain the error dynamics
+\begin{equation}\label{eq:errordyn}
+\begin{aligned}
+\dot{\bm{p}}_e &= \bm{v}_e\\
+m\dot{\bm{v}}_e &= m\bm{g} + R_d R_e \bm{F} - m\ddot{\bm{p}}_d,\\
+\dot{R}_e &= R_e S(\bm{\omega}_e),\\
+J\dot{\bm{\omega}_e} &= \Sigma(R_e,\bm{\omega}_e,\bm{\omega}_d)\bm{\omega}_e+\bm{M} + S(JR_e\tp\bm{\omega}_d)R_e\tp\bm{\omega}_d - R_e\tp\dot{\bm{\omega}}_d
+\end{aligned}
+\end{equation}
+with
+\begin{multline*}
+\Sigma(R_e,\bm{\omega}_e,\bm{\omega}_d) = S(J\bm{\omega}_e)+S(JR_e\tp\bm{\omega}_d)\\
+-S(R_e\tp\bm{\omega}_d)J-J S(R_e\tp\bm{\omega}_d),
+\end{multline*}
+which is a skew-symmetric matrix. 
+
+\begin{problem}
+  Design a controller that globally asymptotically stabilizes the identity for~\eqref{eq:errordyn}.
+\end{problem}
 
 %--------------- Controller Design ---------------%
 \section{Controller Design}
-\subsection{Outer--Loop PD Regulation}
-Define tracking errors $\bm{e}_p = \bm{p}-\bm{p}_d$ and $\bm{e}_v = \bm{v}-\dot{\bm{p}}_d$. Translations are controlled by
+
+The controller design followed in this paper extends the control strategy proposed in~\cite{mayhew_synergistic_2013} from attitude tracking to full pose tracking. The proposed controller is based on rotation matrix feedback combined with a minimum effort control allocation strategy. Rotation matrix feedback is preferred over other attitude representations, such as Euler angles or unit-quaternions, because it is free of singularities or ambiguities. In addition,~\cite{mayhew_synergistic_2013} provides us with a simple way of achieving global asymptotic stability through hybrid control, which is explained in the following sections.
+
+\subsection{Feedback Law Design}
+Almost global attitude tracking is achieved through the appropriate design of a Lyapunov function and feedback pair. In this direction, we consider the following candidate Lyapunov function:
+\begin{equation*}
+  V(R_e,\bm{\omega}_e) = U_A(R_e)+\frac{1}{2}\bm{\omega}_e\tp J\bm{\omega}_e,
+\end{equation*}
+where 
+\begin{equation*}
+  U_A(R_e) = \trace(A(\eye{3}-R_e))
+\end{equation*}
+is a modified trace function with $A\in\mathbb{R}^{3\times3}$ positive definite. The time-derivative of $V$ along the trajectories of~\eqref{eq:errordyn} is
+\begin{multline*}
+  \dot{V}(R_e,\bm{\omega}_e) = -\bm{\omega_e}\tp S^{-1}(R_e\tp A - A R_e) \\
+  +\bm{\omega}_e\tp(\Sigma(R_e,\bm{\omega}_e,\bm{\omega}_d)\bm{\omega}_e+\bm{M} + S(JR_e\tp\bm{\omega}_d)R_e\tp\bm{\omega}_d - R_e\tp\dot{\bm{\omega}}_d)
+\end{multline*}
+where $S^{-1}$ is the inverse of the skew-symmetric map~\eqref{eq:S}. Defining the feedback law as 
+\begin{equation}\label{eq:attctrl}
+  \bm{M} = S^{-1}(R_e\tp A - A R_e) - K_\omega \bm{\omega}_e - S(JR_e\tp\bm{\omega}_d)R_e\tp\bm{\omega}_d + R_e\tp\dot{\bm{\omega}}_d,
+\end{equation}
+with $K_\omega\in\mathbb{R}^{3\times3}$ positive definite, we obtain
+\begin{equation*}
+  \dot{V}(R_e,\bm{\omega}_e) = -\bm{\omega}_e\tp K_\omega \bm{\omega}_e \leq 0.
+\end{equation*}
+
+Stabilization for the tracking error dynamics of the position subsystem is achieved through a standard PD controller:
 \begin{equation}\label{eq:Fctrl}
-\bm{F}_\text{cmd} = -K_p\bm{e}_p - K_v\bm{e}_v - m\bm{g},
+\bm{F}_\text{cmd} = -R_e\tp R_d\tp(K_p\bm{p}_e - K_v\bm{v}_e - m\bm{g}),
 \end{equation}
 with positive definite gains $K_p$ and $K_v$.
+
+\subsection{Hybrid Supervisor}
+The Hybrid Supervisor proposed in~\cite[Example~9]{mayhew_synergistic_2013} continuously evaluates the difference between the current value of $U_A(R_e)$ and 
+
+Define tracking errors $\bm{e}_p = \bm{p}-\bm{p}_d$ and $\bm{e}_v = \bm{v}-\dot{\bm{p}}_d$. Translations are controlled by
+
 
 For attitude, we adopt the \emph{vee} map error \cite{Lee2010}
 \begin{equation}

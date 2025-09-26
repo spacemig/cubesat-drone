@@ -28,15 +28,16 @@ U = [0	0	1
     1	0	0
     -1	0	0]'; % each row is the direction of the thrust
 direction = [1 -1 1 -1 1 -1 1 -1 1 -1]; % directio of the moments
-CT = 0.2945;
-CP = 0.2688;
+CT = 0.3070;
+CP = 0.1989;
 rho = 1.225;
 d = 0.1016;
 kf = rho*d^4*CT/60^2; % thrust coeff
-km = rho*d^5*CP/60^2; %rho*D^5*CM, torque coeff
+km = rho*d^5*CP/60^2/(2*pi); %rho*D^5*CM, torque coeff
 T = []; % thurst to force and torque transformation
 
-% compute the force and torque produced by each thurster 
+
+% compute the force and torque produced by each thruster 
 for I = 1:width(RR)
     aux = [kf*U(:,I); 
            kf*skew(RR(:,I))*U(:,I)-km*U(:,I)*direction(I)];
@@ -75,18 +76,22 @@ for i = 1:length(t)
 end
 
 figure;
-subplot(2,1,1)
+subplot(3,1,1)
 plot(t, quaternions);
-xlabel('Time (s)');
 ylabel('Quaternion Components');
 legend('q_0', 'q_1', 'q_2', 'q_3');
 title('Unit-Quaternions Over Time');
-subplot(2,1,2)
 rpm = zeros(length(t), width(RR)); % Initialize RPMs matrix
+M = zeros(length(t), width(RR)); % Initialize motor torque matrix
 for I = 1:numel(t)
     [~,aux] = F(xi(I,:)');
     rpm(I,:) = aux(1:10); % Extract RPMs for each time step
+    M(I,:) = km*rpm(I,:).^2;
 end
+subplot(3,1,2)
+plot(t,M)
+ylabel('Motor Torque');
+subplot(3,1,3)
 plot(t, rpm);
 xlabel('Time (s)');
 ylabel('Motor RPMs');
