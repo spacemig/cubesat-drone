@@ -11,8 +11,11 @@
 \usepackage{url}
 \usepackage{color}
 \usepackage{mathtools}
+\usepackage{mathrsfs}
 
 \newtheorem*{problem}{Problem Statement}
+\newtheorem{definition}{Definition}
+\newtheorem{proposition}{Proposition}
 
 %--------------- Macros ---------------%
 \newcommand{\norm}[1]{\left| #1 \right|}
@@ -20,6 +23,7 @@
 \newcommand{\ball}{\mathbb{B}}
 \newcommand{\eye}[1]{I_{#1}}
 \DeclareMathOperator{\trace}{trace}
+\DeclareMathOperator{\crit}{crit}
 
 %--------------- Title & Authors ---------------%
 \title{CubeSat Drone: The Development of a CubeSat Experimental Testbed}
@@ -37,7 +41,7 @@
 \begin{abstract}
 This paper presents a hybrid control architecture for global trajectory tracking of an aerial vehicle with the form factor of a \qty{3}{U} CubeSat. 
 The vehicle is equipped with ten bidirectional propellers mounted on facets of its frame. 
-We derive a dynamical model that accounts for the propeller layout and design a proportional-derivative (PD) feedback law combined with a hybrid supervisor to globally asymptotically stabilize the vehicle's pose along arbitrary (bounded) reference trajectories. 
+We derive a dynamical model that accounts for the propeller layout and design a proportional-derivative (PD) feedback law combined with a hybrid supervisor to globally asymptotically stabilize the vehicle's pose along feasible reference trajectories. 
 To solve the control allocation problem, we implement a minimum control effort algorithm.
 Simulation results demonstrate convergence of position and orientation errors and produce physically plausible rotor speed commands.
 \end{abstract}
@@ -68,6 +72,19 @@ S(\omega)\coloneqq\begin{bmatrix}
 \end{equation}
 maps $\bm{\omega}\coloneqq(\omega_1,\omega_2,\omega_3)\in\mathbb{R}^3$ to a skew-symmetric matrix such that $S(\bm{\omega})\bm{x} = \bm{\omega}\times\bm{x}$ for any $\bm{x}\in\mathbb{R}^3$.
 
+\begin{definition}[Potential Function on $SO(3)$]
+A function $U:SO(3)\to\mathbb{R}$ is said to be a potential function on $SO(3)$ if it is continuously differentiable and positive definite relative to $\eye{3}$.
+\end{definition}
+
+\begin{definition}
+The set of critical points of a potential function $U:SO(3)\to\mathbb{R}$ is defined as
+$$\crit U = \{R\in SO(3): \nabla U(R) = 0\}.$$
+\end{definition}
+
+\begin{definition}
+Given a discrete set $\mathcal{Q}$, a collection of potential functions $\mathscr{U_q}\coloneqq\{U_q\}_{q\in\mathcal{Q}}$ on $SO(3)$ is said to be a synergistic if, for each $U_q\in\mathscr{U}$ and each $R\in\crit U_q\setminus\{\eye{3}\}$, there exists another potential function $U_h$ in the collection such that $U_q(R) - U_h(R)>0$.
+\end{definition}
+
 \subsection{Rigid-Body Dynamics}
 Let $\bm{p}\in\mathbb{R}^3$ denote the position of the vehicle's center of mass in an inertial frame $\{\mathcal{I}\}$, $\bm{v}=\dot{\bm{p}}$ its linear velocity, $R\in\mathrm{SO}(3)$ the body-to-inertial rotation matrix, and $\bm{\omega}\in\mathbb{R}^3$ the angular velocity expressed in the body frame.
 The translational and rotational equations of motion are
@@ -94,7 +111,7 @@ The net force and moment acting on the vehicle are
 \begin{aligned}
 \bm{F} &= \sum_{i=1}^{10} f_i\bm{u}_i = k_f\sum_{i=1}^{10}\norm{\Omega_i}\Omega_i\bm{u}_i,\\
 \bm{M} &= \sum_{i=1}^{10}\bigl(\bm{r}_i\times f_i\bm{u}_i + m_i\bm{u}_i\bigr) \\
-&= \sum_{i=1}^{10}\bigl(k_fS(\bm{r}_i) + k_m d_i\bigr)\bm{u}_i\norm{\Omega_i}\Omega_i,
+&= \sum_{i=1}^{10}\bigl(k_fS(\bm{r}_i) - k_m d_i\bigr)\bm{u}_i\norm{\Omega_i}\Omega_i,
 \end{aligned}
 \end{equation}
 where $k_f = \rho d^4 C_T$ and $k_m = \rho d^5 C_Q$. Defining $\bm{\Omega}\coloneqq(\norm{\Omega_1}\Omega_1,\ldots,\norm{\Omega_{10}}\Omega_{10})\in\mathbb{R}^{10}$ as the vector of squared propeller speeds, we can rewrite~\eqref{eq:FM} as $\begin{bmatrix} \bm{F}\tp & \bm{M}\tp \end{bmatrix}\tp = T\bm{\Omega}$ with 
@@ -109,18 +126,18 @@ T = \begin{bmatrix}
 Given $L_v,L_\omega>0$ and a twice-differentiable reference trajectory $t\mapsto(\bm{p}_d(t),R_d(t))\in\mathbb{R}^3\times SO(3)$ with bounded derivatives satisfying
 \begin{equation}\label{eq:ref}
 \begin{aligned}
-  \dot{\bm{p}}_d(t) &= \bm{v}_d(t),\\
-  \dot{v}_d(t) &\in L_v\ball\\
-  \dot{R}_d(t) &= R_d(t)S(\bm{\omega}_d(t)),\\
+  \dot{\bm{p}}_d(t) &= \bm{v}_d(t), &
+  \dot{\bm{v}}_d(t) &\in L_v\ball\\
+  \dot{R}_d(t) &= R_d(t)S(\bm{\omega}_d(t)),& 
   \dot{\bm{\omega}}_d(t) &\in L_\omega\ball
 \end{aligned}
 \end{equation}
 for each $t\geq 0$, we define the tracking errors as follows:
 \begin{equation}\label{eq:errors}
 \begin{aligned}
-\bm{p}_e(t)&\coloneqq\bm{p}(t)-\bm{p}_d(t),\\
+\bm{p}_e(t)&\coloneqq\bm{p}(t)-\bm{p}_d(t),&
 \bm{v}_e(t)&\coloneqq\bm{v}(t)-\dot{\bm{p}}_d(t),\\
-R_e(t)&\coloneqq R_d(t)^\top R(t)\\
+R_e(t)&\coloneqq R_d(t)^\top R(t)&
 \bm{\omega}_e(t) &\coloneqq \bm{\omega}(t)-R_e(t)\tp\bm{\omega}_d(t)
 \end{aligned}
 \end{equation}
@@ -148,17 +165,17 @@ which is a skew-symmetric matrix.
 %--------------- Controller Design ---------------%
 \section{Controller Design}
 
-The controller design followed in this paper extends the control strategy proposed in~\cite{mayhew_synergistic_2013} from attitude tracking to full pose tracking. The proposed controller is based on rotation matrix feedback combined with a minimum effort control allocation strategy. Rotation matrix feedback is preferred over other attitude representations, such as Euler angles or unit-quaternions, because it is free of singularities or ambiguities. In addition,~\cite{mayhew_synergistic_2013} provides us with a simple way of achieving global asymptotic stability through hybrid control, which is explained in the following sections.
+The controller design followed in this paper extends the control strategy proposed in~\cite{mayhew_synergistic_2013} from attitude tracking to full pose tracking. The proposed controller is based on rotation matrix feedback combined with a minimum effort control allocation strategy. Rotation matrix feedback is preferred over other attitude representations, such as Euler angles or unit-quaternions, because it is free of singularities or ambiguities. In addition,~\cite{mayhew_synergistic_2013} provides us with a simple way of achieving global asymptotic stability through hybrid control, which, for the sake of completeness, is explained in the following sections.
 
-\subsection{Feedback Law Design}
+\subsection{Nominal Feedback Law Design}
 Almost global attitude tracking is achieved through the appropriate design of a Lyapunov function and feedback pair. In this direction, we consider the following candidate Lyapunov function:
 \begin{equation*}
-  V(R_e,\bm{\omega}_e) = U_A(R_e)+\frac{1}{2}\bm{\omega}_e\tp J\bm{\omega}_e,
+  V(R_e,\bm{\omega}_e) = U_0(R_e)+\frac{1}{2}\bm{\omega}_e\tp J\bm{\omega}_e,
 \end{equation*}
 where 
-\begin{equation*}
-  U_A(R_e) = \trace(A(\eye{3}-R_e))
-\end{equation*}
+\begin{equation}\label{eq:U0}
+  U_0(R_e) = \trace(A(\eye{3}-R_e))
+\end{equation}
 is a modified trace function with $A\in\mathbb{R}^{3\times3}$ positive definite. The time-derivative of $V$ along the trajectories of~\eqref{eq:errordyn} is
 \begin{multline*}
   \dot{V}(R_e,\bm{\omega}_e) = -\bm{\omega_e}\tp S^{-1}(R_e\tp A - A R_e) \\
@@ -175,34 +192,94 @@ with $K_\omega\in\mathbb{R}^{3\times3}$ positive definite, we obtain
 
 Stabilization for the tracking error dynamics of the position subsystem is achieved through a standard PD controller:
 \begin{equation}\label{eq:Fctrl}
-\bm{F}_\text{cmd} = -R_e\tp R_d\tp(K_p\bm{p}_e - K_v\bm{v}_e - m\bm{g}),
+\bm{F} = -R_e\tp R_d\tp(K_p\bm{p}_e - K_v\bm{v}_e - m\bm{g})+m\ddot{\bm{p}}_d,
 \end{equation}
-with positive definite gains $K_p$ and $K_v$.
+with positive definite gains $K_p,K_v\in\mathbb{R}^{3\times 3}$.
+
+\subsection{Complementary Feedback Law Design}
+The feedback laws~\eqref{eq:attctrl} and~\eqref{eq:Fctrl} do not guarantee global asymptotic stability due to the topological obstruction of $\mathrm{SO}(3)$ (cf.~\cite{bhat_topological_2000}). In particular, $U_0$ has four critical points, one corresponding to the desired equilibrium $R_e=\eye{3}$ and three undesired equilibria corresponding to rotations of $180^{\circ}$ about the eigenvectors of $A$ (cf.~\cite{mayhew_synergistic_2013}). To overcome this limitation, a complementary feedback law is designed by selecting a different modified trace function $U_1$ with the same structure as $U_0$ but with different critical points, namely:
+\begin{equation}\label{eq:U1}
+  U_1(R_e) = \alpha+\epsilon U_0(P\tp R_e),
+\end{equation} 
+where $\alpha,\epsilon>0$ and $P\in SO(3)$ are controller parameters. The feedback law associated with $U_1$ is
+\begin{multline}\label{eq:attctrl2}
+  \bm{M} = \epsilon S^{-1}(R_e\tp P A - A P\tp R_e) - K_\omega \bm{\omega}_e \\
+  - S(JR_e\tp\bm{\omega}_d)R_e\tp\bm{\omega}_d + R_e\tp\dot{\bm{\omega}}_d.
+\end{multline}
+The values of $\alpha,\epsilon$ and $P$ are chosen in combination with the Hybrid Supervisor described in the next section so as to avoid undesired equilibria. The force input remains unchanged relative to~\eqref{eq:Fctrl}.
 
 \subsection{Hybrid Supervisor}
-The Hybrid Supervisor proposed in~\cite[Example~9]{mayhew_synergistic_2013} continuously evaluates the difference between the current value of $U_A(R_e)$ and 
+The Hybrid Supervisor proposed in~\cite[Example~9]{mayhew_synergistic_2013} continuously evaluates the difference between the current value of $U_q(R_e)$ and $U_{1-q}(R_e)$ and switches from $q$ to $1-q$ whenever the difference exceeds a threshold $\delta>0$. The switching logic is defined by the hybrid system $\mathcal{H}\coloneqq (C,F,D,G)$ with state $(\xi_d,\xi_e,q)\in\mathcal{S}_d\times\mathcal{S}\times \mathcal{Q}$ with $\xi_{d,e}\coloneqq (\bm{p}_{d,e},\bm{v}_{d,e},R_{d,e},\bm{\omega}_{d,e})$, $\mathcal{S}_{d}=\mathcal{S}_{e}\coloneqq \mathbb{R}^3\times\mathbb{R}^3\times SO(3)\times\mathbb{R}^3$ and $\mathcal{Q}\coloneqq\{0,1\}$, as follows:
+\begin{align*}
+  \dot{q}&=0 & (\xi_d,\xi_e,q)&\in C\\
+  q^+&=1-q & (\xi_d,\xi_e,q)&\in D\\
+  & & (F,M)&=(\kappa_F(\xi_d,\xi_e),\kappa_M(\xi_d,\xi_e,q))
+\end{align*}
+where $\kappa_F$ is defined by~\eqref{eq:Fctrl} and $\kappa_M$ is defined by~\eqref{eq:attctrl} if $q=0$ and by~\eqref{eq:attctrl2} if $q=1$. The flow and jump sets are
+\begin{align*}
+  C &= \{\xi\in\mathcal{S}: U_q(R_e)-U_{1-q}(R_e)\leq\delta\},\\
+  D &= \{\xi\in\mathcal{S}: U_q(R_e)-U_{1-q}(R_e)\geq\delta\}.
+\end{align*}
 
-Define tracking errors $\bm{e}_p = \bm{p}-\bm{p}_d$ and $\bm{e}_v = \bm{v}-\dot{\bm{p}}_d$. Translations are controlled by
-
-
-For attitude, we adopt the \emph{vee} map error \cite{Lee2010}
-\begin{equation}
-\bm{e}_R = \tfrac{1}{2}\bigl(R_d^\top R - R^\top R_d\bigr)^{\vee},\quad \bm{e}_\omega = \bm{\omega} - R^\top R_d\bm{\omega}_d,
+\subsection{Closed-Loop Hybrid System}
+The closed-loop hybrid system is given by
+\begin{equation}\label{eq:H}
+\begin{aligned}
+\underbrace{%
+\begin{aligned}
+&\dot{\bm{p}}_d = \bm{v}_d\\
+&\dot{\bm{v}}_d \in L_v\ball\\
+&\dot{R}_d = R_d \operatorname{S}(\bm{\omega}_d)\\
+&\dot{\bm{\omega}}_d \in L_\omega\ball\\
+&\dot{\bm{p}}_e = \bm{v}_e\\
+&m\dot{\bm{v}}_e = m\bm{g} + R_d R_e \kappa_F(\xi_d,\xi_e) - m\ddot{\bm{p}}_d\\
+&\dot{R}_e = R_e \operatorname{S}(\bm{\omega}_e)\\
+&\begin{multlined}
+J\dot{\bm{\omega}}_e
+= \Sigma(R_e,\bm{\omega}_e,\bm{\omega}_d)\,\bm{\omega}_e + \kappa_M(\xi_d,\xi_e,q) \\
++ \operatorname{S}\!\big(J R_e^\top \bm{\omega}_d\big)\,R_e^\top \bm{\omega}_d
+- R_e^\top \dot{\bm{\omega}}_d
+\end{multlined}\\
+&\dot{q} = 0
+\end{aligned}}_{\displaystyle(\xi_d,\xi_e,q)\in C}
+\quad
+\underbrace{%
+\begin{aligned}
+\bm{p}_d^{+} &= \bm{p}_d\\
+\bm{v}_d^{+} &= \bm{v}_d\\
+R_d^{+} &= R_d\\
+\bm{\omega}_d^{+} &= \bm{\omega}_d\\
+\bm{p}_e^{+} &= \bm{p}_e\\
+\bm{v}_e^{+} &= \bm{v}_e\\
+R_e^{+} &= R_e\\
+\bm{\omega}_e^{+} &= \bm{\omega}_e\\
+\\
+q^{+} &= 1 - q
+\end{aligned}}_{\displaystyle(\xi_d,\xi_e,q)\in D}
+\end{aligned}
 \end{equation}
-and command the moment
-\begin{equation}\label{eq:Mctrl}
-\bm{M}_\text{cmd} = -K_R\bm{e}_R - K_\omega\bm{e}_\omega.
-\end{equation}
+to which the following result applies.
+
+\begin{proposition}
+  Given $\mathcal{Q}\coloneqq\{0,1\}$, $U_0$ in~\eqref{eq:U0} and $U_1$ in~\eqref{eq:U1}, if $\mathscr{U}\coloneqq\{U_q\}_{q\in\mathcal{Q}}$ is synergistic with gap exceeding $\delta>0$, then the compact set 
+  $$\mathcal{A}\coloneqq\{(\xi_d,\xi_e,q)\in\mathcal{S}_d\times\mathcal{S}_e\times\mathcal{Q}:\xi_e=(0,0,\eye{3},0),q=0\}$$
+  is globally asymptotically stable for the hybrid system~\eqref{eq:H}.
+\end{proposition}
 
 \subsection{Pseudoinverse Allocation}
-Concatenate the commands into $\bm{u}_\text{des}=\bigl[\bm{F}_\text{cmd};\bm{M}_\text{cmd}\bigr]$. Because $T$ is full row rank, its Moore--Penrose pseudoinverse $T^{\dagger} \triangleq T^\top\bigl(TT^\top\bigr)^{-1}$ yields the minimum--norm solution
+The control allocation problem consists of finding a vector of propeller speeds 
+\begin{equation*}
+\bm{\Omega}\coloneqq \begin{bmatrix}
+\norm{\Omega_1}\Omega_1 & \ldots & \norm{\Omega_{10}}\Omega_{10}\end{bmatrix}\tp
+\end{equation*}
+that generates the desired force and moment $(\bm{F},\bm{M})$ given by the feedback laws $\kappa_F$ and $\kappa_M$. We say that the control is minimum effort because it solves the following optimization problem:
 \begin{equation}\label{eq:allocation}
-\bm{\Omega} = T^{\dagger}\,\bm{u}_\text{des}.
+\bm{\Omega}=\arg\min\left\{\norm{\bm{\Omega}}^2: T\bm{\Omega} = \begin{bmatrix} \kappa_F(\xi_d,\xi_e)\\ \kappa_M(\xi_d,\xi_e,q) \end{bmatrix}\right\}.
 \end{equation}
-Actuator saturation can be enforced by standard weighted least--squares methods, omitted here for brevity.
-
-\subsection{Closed--Loop Properties}
-Substituting \eqref{eq:Fctrl}--\eqref{eq:allocation} into the dynamics and invoking Lyapunov arguments similar to \cite{Tayebi2012} shows the equilibrium $\bm{e}_p=\bm{e}_v=\bm{e}_R=\bm{e}_\omega=\bm{0}$ to be globally asymptotically stable in the absence of saturation and model uncertainty.
+If $T$ is full rank, then there is a unique solution to~\eqref{eq:allocation} given by
+\begin{equation}
+\bm{\Omega} = T\tp\left(TT\tp\right)^{-1}\begin{bmatrix} \kappa_F(\xi_d,\xi_e)\\ \kappa_M(\xi_d,\xi_e,q) \end{bmatrix}.
+\end{equation}
 
 %--------------- Simulation Results ---------------%
 \section{Simulation Results}
@@ -248,20 +325,8 @@ The CubeSat was required to stabilize from an initial offset of \qty{0.5}{m} alo
 This letter demonstrated that a conventional PD outer loop combined with a pseudoinverse control allocator suffices to govern an overactuated \qty{2}{U} CubeSat outfitted with ten propellers. While simple, the design reliably tracks pose commands without requiring iterative optimization. Future work will address actuator saturation, aerodynamic coupling in rarefied atmospheres, and experimental validation aboard a hardware demonstrator.
 
 %--------------- References ---------------%
-\bibliographystyle{IEEEtran}
-\begin{thebibliography}{99}
-
-\bibitem{Lee2010}
-T.~Lee, M.~Leok, and N.~H. McClamroch, ``Geometric tracking control of a quadrotor UAV on $\mathrm{SE}(3)$,'' in \emph{Proc. IEEE Conf. Decision and Control}, 2010, pp. 5420--5425.
-
-\bibitem{Tayebi2012}
-A.~Tayebi and S.~McGilvray, ``Attitude stabilization of a rigid body using quaternion feedback,'' \emph{IEEE Trans. Control Syst. Technol.}, vol.~14, no.~3, pp. 562--571, 2006.
-
-\bibitem{HyEQ2012}
-R.~G. Sanfelice, D.~Nesic, and A.~R. Teel, ``A toolbox for simulation of hybrid systems in MATLAB/Simulink: Hybrid Equations (HyEQ) toolbox,'' in \emph{Hybrid Systems: Computation and Control}, ser. Lecture Notes in Computer Science, vol. 7595.
-  Berlin, Heidelberg: Springer, 2012, pp. 101--106.
-
-\end{thebibliography}
+\bibliographystyle{ieeetr}
+\bibliography{biblio}
 
 \end{document}
 
