@@ -1,9 +1,12 @@
-global J m T grv Kp Kv A Kw aa ee S delta
+global J m T grv Kp Kv A Kw aa ee S delta n
 load propCoeffs kf km
+a = 6400e3+550e3;
+mu = 3.986e14;
+n = sqrt(mu/a^3);
 %system parameters
 grv = [0;0;-9.81];
-m = 2; % mass of the drone
-J = diag([0.006666666667, 0.03333333333, 0.03333333333]); % inertia matrix of the drone
+m = 893.2e-3; % mass of the drone
+J = diag([0.001488666667, 0.007443333333, 0.007443333333]); % inertia matrix of the drone
 
 % thurster positions in body frame
 RR = [10	0	5
@@ -55,20 +58,114 @@ ee = 1/4;
 delta = 0.1; 
 
 %simulation parameters
-TSPAN = [0 5];
+TSPAN = [0 40];
 JSPAN = [0 10];
 rule = 1; %priority for jumps
-p0 = [0; 0; 0]; % initial position
+p0 = [0.9; 0; 0]; % initial position
 v0 = [0; 0; 0]; % initial velocity
 R0 = angle2dcm(0,0,0); % initial orientation
 w0 = [0; 0; 0]; % initial angular velocity
 t0 = 0;
 q0 = 2; % logic variable can be 1 or 2
-xi0 = [p0; v0; reshape(R0, 9, 1); w0;t0;q0]; % initial state vector
+pd0 = [1; 0; 0]; % initial desired position
+vd0 = [0; 0; 0]; % initial desired velocity
+Rd0 = angle2dcm(0,pi,0); % initial desired orientation
+wd0 = [0; 4*pi/100; 0]; % desired angular velocity
+xi0 = [p0; v0; reshape(R0, 9, 1); w0;t0;q0;pd0;vd0;Rd0(:);wd0]; % initial state vector
 
 [t,j,xi] = HyEQsolver(@F,@G,@C,@D,xi0, TSPAN, JSPAN,rule);
 
+%% Journal plots
+p = xi(:,1:3);
+v = xi(:,4:6);
+w = xi(:,16:18);
+q = xi(:,20); % logic variable can be 1 or 2
+pd = xi(:,21:23);
+vd = xi(:,24:26);
+wd = xi(:,36:38);
+N = length(t);
+angleError = zeros(N,1);
+ang = zeros(N,1);
+angd = zeros(N,1);
+bz = zeros(N,3);
+rpm = zeros(N,10);
+M = zeros(N,10);
+thrust = zeros(N,10);
+for I = 1:length(t)
+    R = reshape(xi(I, 7:15)', 3, 3);
+    Rd = reshape(xi(I,27:35)', 3, 3);
+    angleError(I) = trace(eye(3)-Rd'*R);
+    ang(I) = acos(1-trace(eye(3)-R)/2);
+    angd(I) = acos(1-trace(eye(3)-Rd)/2);
+    bz(I,:) = R(:,3)';
+    [~,aux] = F(xi(I,:)');
+    rpm(I,:) = aux(1:10); % Extract RPMs for each time step
+    thrust(I,:) = kf*abs(rpm(I,:)).*rpm(I,:);
+    M(I,:) = km*abs(rpm(I,:)).*rpm(I,:);
+end
+h = create_axis((1:4)'*[1 1 1],15,"TopMargin",0.05,...
+    "BottomMargin", 0.05,...
+    "LeftMargin", 0.1,...
+    "RightMargin", 0.05);
+colors = get(gca,'colororder');
+% Position
+axes(h(1))
+plot(t,sqrt(sum((p-pd).^2,2)),'LineWidth',2)
+set(gca,'xticklabel','')
+grid on
+ylabel('|p_e| [m]')
+ylim(get(gca,'ylim')+[-0.01 0.01]);
+% Linear velocity
+axes(h(2))
+plot(t,sqrt(sum((v-vd).^2,2)),'LineWidth',2)
+set(gca,'xticklabel','')
+grid on
+ylabel('|v_e| [m/s]')
+ylim(get(gca,'ylim')+[-0.01 0.01]);
+%Angle
+axes(h(3))
+plot(t,ang/pi,'LineWidth',2)
+hold on
+plot(t,angd/pi,'--','LineWidth',2)
+set(gca,'xticklabel','')
+grid on
+ylabel('Angle (\times\pi rad)')
+ylim([-0.1,1.1])
+plot(t(logical([0;diff(j)])),ang(logical([0;diff(j)]))/pi,'o','MarkerEdgeColor',colors(1,:),'MarkerSize',12)
+legend('\theta','\theta_d','Controller Switch','FontSize',12,'location','best')
+hold off
+% Angular Velocity
+axes(h(4))
+plot(t,w(:,2),'LineWidth',2)
+hold on
+plot(t,wd(:,2),'--','LineWidth',2)
+set(gca,'xticklabel','')
+grid on
+ylabel('Angular Vel. [rad/s]')
+plot(t(logical([0;diff(j)])),w(logical([0;diff(j)]),2),'o','MarkerEdgeColor',colors(1,:),'MarkerSize',12)
+legend('\omega_y','\omega_{d,y}','Controller Switch','FontSize',12,'location','best')
+hold off
+xlabel('t [s]')
+%% rpms and torque
+h2 = create_axis((1:2)'*[1 1],17,"TopMargin",0.05,...
+    "BottomMargin", 0.1,...
+    "LeftMargin", 0.1,...
+    "RightMargin", 0.05,...
+    "InnerYMargin", 0.05);
+axes(h2(1))
+plot(t, M);
+grid on
+set(gca,'xticklabel','')
+ylabel('Motor torque [N.m]')
+axes(h2(2))
+plot(t,rpm/1000)
+grid on
+xlabel('t [s]')
+ylabel('Motor RPM (\times 1000)')
+set(gca,'ytick',-50:10:50)
+
 %% Extract unit-quaternions from R and plot them
+%{
 quaternions = zeros(length(t), 4);
 for i = 1:length(t)
     R = reshape(xi(i, 7:15), 3, 3);
@@ -87,7 +184,7 @@ M = zeros(length(t), width(RR)); % Initialize motor torque matrix
 for I = 1:numel(t)
     [~,aux] = F(xi(I,:)');
     rpm(I,:) = aux(1:10); % Extract RPMs for each time step
-    M(I,:) = km*rpm(I,:).^2;
+    M(I,:) = kf*abs(rpm(I,:)).*rpm(I,:)/9.81;
 end
 subplot(3,1,2)
 plot(t,M)
@@ -150,48 +247,43 @@ for i = 1:10:length(t)
     end
 end
 hold off;
-
-function [pd,vd,ad,Rd,wd,dwd] = trajectory(t)
-    % Define a simple trajectory for the drone
-    pd = [0; 0; 0]; % position
-    vd = [0; 0; 0]; % velocity
-    ad = [0; 0; 0]; % acceleration
-    %{
-    wd = [1; 0; 0]; % angular velocity
-    Rd = expm(skew(wd)*t); % orientation (identity matrix)
-    dwd = [0; 0; 0]; % angular acceleration
-    %}
-    wd = [0; 0; 0];
-    Rd = angle2dcm(0,pi/2,0,"XYZ");
-    dwd = zeros(3,1);
-end
-
+%}
 function [dxi,rpm] = F(xi)
-    global J m T grv Kp Kv A Kw S ee 
+    global J m T grv Kp Kv A Kw S ee n
     p = xi(1:3);
     v = xi(4:6);
     R = reshape(xi(7:15), 3, 3);
     w = xi(16:18);
     t = xi(19); % time
     q = xi(20); % logic variable can be 1 or 2
+    pd = xi(21:23);
+    vd = xi(24:26);
+    Rd = reshape(xi(27:35), 3, 3);
+    wd = xi(36:38);
     % tracking errors
-    [pd,vd,ad,Rd,wd,dwd] = trajectory(t);
     ep = p - pd; % position error
     ev = v - vd; % velocity error
     eR = Rd' * R; % orientation error (R * Rd' gives the relative rotation)
     ew = w - eR'*wd; % angular velocity error
+    % reference dynamics
+    dpd = vd;
+    dvd = [3*n^2*pd(1)+2*n*vd(2);
+        -2*n*vd(1);
+        -n^2*pd(3)];
+    dRd = Rd*skew(wd);
+    dwd  = zeros(3,1);
     %control commands
-    Fctrl = ad-m*grv-Kv*ev -Kp*ep; % simple PD control
+    Fctrl = dvd-m*grv-Kv*ev -Kp*ep; % simple PD control
     if q == 1
         Mctrl = J*eR'*dwd+skew(eR'*wd)*J*eR'*wd-inverse_skew(A*eR-eR'*A)-Kw*ew; 
     else
         Mctrl = J*eR'*dwd+skew(eR'*wd)*J*eR'*wd-ee*inverse_skew(A*S'*eR-eR'*S*A)-Kw*ew;
     end
     % individual motors rpm >> TODO: replace rpm with thurst
-    rpm2 = T'*(T*T')^(-1)* [R'*Fctrl;Mctrl]; % solve for motor RPMs
+    rpm2 = T'*(T*T')^(-1)* [R'*Fctrl/norm(grv);Mctrl]; % solve for motor RPMs
     rpm = sign(rpm2).*sqrt(abs(rpm2));
     % rpm to forces and moments
-    aux = T * rpm2; % forces and moments from RPMs
+    aux = T * rpm2*norm(grv); % forces and moments from RPMs
     F = R*aux(1:3); % forces
     M = aux(4:6); % moments
     %dynamics
@@ -199,7 +291,7 @@ function [dxi,rpm] = F(xi)
     dv = grv+F/m;
     dR = R * skew(w);
     dw = J \ (M - skew(w) * J * w);
-    dxi = [dp; dv; reshape(dR, 9, 1); dw; 1;0];
+    dxi = [dp; dv; reshape(dR, 9, 1); dw; 1;0;dpd;dvd;reshape(dRd,9,1);dwd];
 end
 
 function out = G(xi)
@@ -213,7 +305,9 @@ function out = C(xi)
     % Flow set
     R = reshape(xi(7:15), 3, 3);
     q = xi(20); % logic variable can be 1 or 2
-    mu = V(R,q)-V(R,3-q);
+    Rd = reshape(xi(27:35), 3, 3);
+    eR = Rd' * R; % orientation error (R * Rd' gives the relative rotation)
+    mu = V(eR,q)-V(eR,3-q);
     if mu <= delta
         out = 1; % in the flow set
     else
@@ -226,7 +320,9 @@ function out = D(xi)
     % Jump set
     R = reshape(xi(7:15), 3, 3);
     q = xi(20); % logic variable can be 1 or 2
-    mu = V(R,q)-V(R,3-q);
+    Rd = reshape(xi(27:35), 3, 3);
+    eR = Rd' * R; % orientation error (R * Rd' gives the relative rotation)
+    mu = V(eR,q)-V(eR,3-q);
     if mu >= delta
         out = 1; % in the jump set
     else
