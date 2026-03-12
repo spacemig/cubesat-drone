@@ -1,5 +1,5 @@
 # Cubesat Drone
-CubeSat Drone Paper presented at the IEEE Aerospace Conference 2026
+CubeSat Drone Paper presented at the IEEE Aerospace Conference 2026, March 12, 2026
 
 * Paper [PDF](https://github.com/spacemig/cubesat-drone/blob/main/CubeSat_Drone_2026_IEEE_Aerospace_v4_FINAL.pdf)
 * Conference Presentation (PDF, [Google Slides w Animations](https://docs.google.com/presentation/d/1Q7ujsPAilGY_VuI7b7jiWW_QAeioJqJVQS8Dc8zmqYA/edit?usp=sharing))
